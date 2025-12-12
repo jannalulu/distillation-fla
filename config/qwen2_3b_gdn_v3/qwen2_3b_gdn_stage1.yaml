@@ -1,7 +1,7 @@
 data:
   # name: "robbiegwaldd/dclm-10B"
   # path: "robbiegwaldd/dclm-10B"
-  cache_dir: '/proj/checkpoints/songlin/data_cache/chunked_context512'
+  cache_dir: '/workspace/checkpoints/data_cache/chunked_context512'
 
 teacher_model:
   name: 'fla-hub/Qwen2.5-3B-Instruct'
@@ -19,7 +19,7 @@ train:
   lr: 0.001 # all but attention layers
   lr_attn: 0.001 # attention layers
   max_grad_norm: 1.0
-  output_dir: '/proj/checkpoints/songlin/outputs/qwen_3b_instruct_gdn3/stage1'
+  output_dir: '/workspace/checkpoints/outputs/qwen_3b_instruct_gdn3/stage1'
   max_length: 512
   # tokenizer
   add_eos_token: False

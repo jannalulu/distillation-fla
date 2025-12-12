@@ -1,7 +1,7 @@
 data:
   # name: "robbiegwaldd/dclm-10B"
   # path: "robbiegwaldd/dclm-10B"
-  cache_dir: '/proj/checkpoints/songlin/data_cache/chunked_context4096'
+  cache_dir: '/workspace/checkpoints/data_cache/chunked_context4096'
 
 teacher_model:
   name: 'fla-hub/Qwen2.5-3B-Instruct'
@@ -11,7 +11,7 @@ student_model:
   keep_full_attention_layers: []
 
 train:
-  target_tokens: 1000_000_000
+  target_tokens: 600_000_000
   batch_size: 32
   micro_batch_size: 2
   train_seq_len: 4096
@@ -20,11 +20,11 @@ train:
   lr_attn: 0.0001 # attention layers
 
   max_grad_norm: 1.0
-  output_dir: '/proj/checkpoints/songlin/outputs/qwen_3b_instruct_gdn3/stage2'
-  student_init_ckpt: '/proj/checkpoints/songlin/outputs/qwen_3b_instruct_gdn3/stage1/converted-hf'
+  output_dir: '/workspace/checkpoints/outputs/qwen_3b_instruct_gdn3/stage2'
+  student_init_ckpt: '/workspace/checkpoints/outputs/qwen_3b_instruct_gdn3/stage1/converted-hf'
   max_length: 4096
   # tokenizer
   add_eos_token: False
-  resume_from_checkpoint: '/u/sonta/code/distillation-fla/checkpoints/qwen_3b_instruct_gdn3_hybrid/stage2/checkpoint-4577'
+  resume_from_checkpoint: None
 
 stage: 2
