@@ -63,7 +63,7 @@ Our training process is divided into three distinct stages. You can run each sta
 This initial stage focuses on aligning the attention outputs of the model.
 
 ```bash
-deepspeed hf_train_merged.py --cfg config_rad/rapid_distill_stage1_qwen.yaml
+deepspeed train.py --cfg config/qwen2_3b_gdn_v3/qwen2_3b_gdn_stage1.yaml
 ```
 
 After the first stage training, you need to convert the checkpoint's weight to a unified `StudentForCausalLM` model weight.
@@ -83,10 +83,10 @@ The default setting (for ):
 In the second stage, we perform knowledge distillation on the model's logits to transfer capabilities from a teacher model.
 
 First, we should convert the first stage's final checkpoint to HF format (see #convert-deepspeed-checkpoint-to-huggingface-format)
- 
+
 
 ```bash
-deepspeed hf_train_merged.py --cfg config_rad/rapid_distill_stage2_qwen.yaml
+deepspeed train.py --cfg config/qwen2_3b_gdn_v3/qwen2_3b_gdn_stage2.yaml
 ```
 
 Recommended setting:
@@ -102,7 +102,7 @@ The final stage involves continuing the training on longer sequence lengths to e
 Again, first, we should convert Stage2's checkpoint to HF format (see #convert-deepspeed-checkpoint-to-huggingface-format)
 
 ```bash
-deepspeed hf_train_merged.py --cfg config_rad/rapid_distill_stage3_qwen.yaml
+deepspeed train.py --cfg config/qwen2_3b_gdn_v3/qwen2_3b_gdn_stage3.yaml
 ```
 
 ## Evaluation

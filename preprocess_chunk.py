@@ -11,7 +11,7 @@ def parse_args():
     parser.add_argument(
         "--tokenized_dataset_path",
         type=str,
-        default="/proj/checkpoints/songlin/data_cache/tokenized_tokens.arrow",
+        default="/workspace/checkpoints/data_cache/tokenized_tokens.arrow",
         help="Path to the saved tokenized dataset (from save_to_disk)"
     )
     parser.add_argument(
@@ -24,7 +24,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="/proj/checkpoints/songlin/data_cache/",
+        default="/workspace/checkpoints/data_cache/",
         help="Output directory for chunked dataset"
     )
     parser.add_argument(
@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument(
         "--npy_cache_path",
         type=str,
-        default="/proj/checkpoints/songlin/data_cache/tokenized_tokens_all.npy",
+        default="/workspace/checkpoints/data_cache/tokenized_tokens_all.npy",
         help="Optional path to .npy cache file for concatenated tokens"
     )
     return parser.parse_args()
