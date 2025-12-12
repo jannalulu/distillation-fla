@@ -129,7 +129,7 @@ class FusedKLDivLossFunction(torch.autograd.Function):
         device = x.device
         
         # 始终使用Triton优化版本，但处理ZeRO-3的梯度累积
-        using_zero3 = HAS_DEEPSPEED and hasattr(weight, 'ds_id')
+        using_zero3 = HAS_DEEPSPEED and (hasattr(weight, 'ds_id') or hasattr(target_weight, 'ds_id'))
         
         if using_zero3:
             # ZeRO-3: 在gathered状态下计算，但梯度直接累积到参数
