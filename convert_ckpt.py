@@ -36,6 +36,7 @@ def convert_deepspeed_checkpoint_to_clean_student(
     base_dir: str,
     student_attn_class_name: str,
     keep_full_attention_layers: list[int] = [],
+    teacher_model_name: str = None,
 ):
     ckpt_dir = find_latest_checkpoint(base_dir)
     print(f"🔍 Using latest checkpoint: {ckpt_dir}")
@@ -46,16 +47,25 @@ def convert_deepspeed_checkpoint_to_clean_student(
     student_attn_class = get_student_attention_class(student_attn_class_name)
     print(f"✅ Building student model with: {student_attn_class.__name__}")
     
+    # Check for architecture changes between checkpoint and target config
+    ckpt_keep_layers = set(config.to_dict().get('keep_full_attention_layers', []))
+    target_keep_layers = set(keep_full_attention_layers)
+    layers_to_init_from_teacher = target_keep_layers - ckpt_keep_layers
+
+    if layers_to_init_from_teacher:
+        print(f"⚠️ Layers transitioning student → full attention: {sorted(layers_to_init_from_teacher)}")
+
     config_dict = config.to_dict()
     config_dict['student_name'] = student_attn_class_name
     config_dict['name'] = 'student'
     config_dict['keep_full_attention_layers'] = keep_full_attention_layers
     config = StudentConfig(**config_dict)
-    
+
     with init_empty_weights():
         student_model = AutoModelForCausalLM.from_config(config)
     student_model.to_empty(device='cpu')
     student_model = student_model.to(torch.bfloat16)
+    model_state = student_model.state_dict()
 
     # load weights
     index_path = os.path.join(ckpt_dir, 'model.safetensors.index.json')
@@ -82,9 +92,34 @@ def convert_deepspeed_checkpoint_to_clean_student(
     purified_state_dict = {}
     for k, v in state_dict.items():
         if ".student_attn." in k:
-            purified_state_dict[k.replace(".student_attn", "")] = v
+            new_key = k.replace(".student_attn", "")
+            # Only include if shapes match
+            if new_key in model_state and model_state[new_key].shape == v.shape:
+                purified_state_dict[new_key] = v
         elif ".teacher_attn" not in k:
-            purified_state_dict[k] = v
+            # Only include if shapes match
+            if k in model_state and model_state[k].shape == v.shape:
+                purified_state_dict[k] = v
+
+    # Load teacher weights for transitioning layers
+    if layers_to_init_from_teacher and teacher_model_name:
+        print(f"🔄 Loading teacher weights for transitioning layers from: {teacher_model_name}")
+        teacher_model = AutoModelForCausalLM.from_pretrained(
+            teacher_model_name, torch_dtype=torch.bfloat16, device_map="cpu"
+        )
+        teacher_state = teacher_model.state_dict()
+        for k, v in teacher_state.items():
+            if ".layers." in k and ".attn." in k:
+                parts = k.split(".layers.")
+                if len(parts) > 1:
+                    layer_idx = int(parts[1].split(".")[0])
+                    if layer_idx in layers_to_init_from_teacher:
+                        if k in model_state and model_state[k].shape == v.shape:
+                            purified_state_dict[k] = v
+        del teacher_model
+        print("✅ Teacher weights loaded for transitioning layers")
+    elif layers_to_init_from_teacher:
+        print("⚠️ No teacher model specified - transitioning layers will be randomly initialized")
 
     student_model.load_state_dict(purified_state_dict, strict=False)
 
@@ -104,11 +139,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg_dict = parse_config(args.cfg)
     cfg = OmegaConf.create(cfg_dict)
-    cfg = OmegaConf.to_container(cfg, resolve=True)  
+    cfg = OmegaConf.to_container(cfg, resolve=True)
     convert_deepspeed_checkpoint_to_clean_student(
         base_dir=cfg['train']['output_dir'],
         student_attn_class_name=cfg['student_model']['name'],
-        keep_full_attention_layers=cfg['student_model']['keep_full_attention_layers']
+        keep_full_attention_layers=cfg['student_model']['keep_full_attention_layers'],
+        teacher_model_name=cfg.get('teacher_model', {}).get('name')
     )
 
 

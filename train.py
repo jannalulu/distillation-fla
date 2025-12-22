@@ -172,17 +172,92 @@ def build_student_for_stage2_and_3(cfg):
     purifying it by removing the teacher wrapper, and preparing it for
     knowledge distillation.
 
-    This version is to handle hybrid models with both student
-    and full-attention layers.
+    This version handles hybrid models with both student and full-attention layers.
+    If keep_full_attention_layers differs between checkpoint and YAML config,
+    transitioning layers (student → full attention) are initialized from teacher.
     """
-    student_config = AutoConfig.from_pretrained(cfg.train.student_init_ckpt)
-    student_config.fuse_swiglu = False # to be compatible with DeepSpeed's Zero-3
+    import os
+    import json
+    from safetensors.torch import load_file
 
-    student_model = AutoModelForCausalLM.from_pretrained(
-    cfg.train.student_init_ckpt,
-    config=student_config,
-    torch_dtype=torch.bfloat16
-    )
+    # Load checkpoint config
+    ckpt_config = AutoConfig.from_pretrained(cfg.train.student_init_ckpt)
+    ckpt_keep_layers = set(getattr(ckpt_config, 'keep_full_attention_layers', []))
+
+    # Get desired keep_full_attention_layers from YAML config
+    yaml_keep_layers = set(cfg.student_model.get('keep_full_attention_layers', []))
+
+    # Layers transitioning from student → full attention need teacher weights
+    layers_to_init_from_teacher = yaml_keep_layers - ckpt_keep_layers
+
+    if layers_to_init_from_teacher:
+        logger.info(f"⚠️ Layers transitioning student → full attention: {sorted(layers_to_init_from_teacher)}")
+        logger.info(f"   These will be initialized from teacher: {cfg.teacher_model.name}")
+
+    # If no architecture change, use the simple path
+    if not layers_to_init_from_teacher:
+        student_config = AutoConfig.from_pretrained(cfg.train.student_init_ckpt)
+        student_config.fuse_swiglu = False
+        student_model = AutoModelForCausalLM.from_pretrained(
+            cfg.train.student_init_ckpt,
+            config=student_config,
+            torch_dtype=torch.bfloat16
+        )
+    else:
+        # Build config with YAML's keep_full_attention_layers
+        student_config = AutoConfig.from_pretrained(cfg.train.student_init_ckpt)
+        student_config.fuse_swiglu = False
+        student_config.keep_full_attention_layers = list(yaml_keep_layers)
+
+        # Load checkpoint weights
+        ckpt_path = cfg.train.student_init_ckpt
+        ckpt_state_dict = {}
+        index_path = os.path.join(ckpt_path, 'model.safetensors.index.json')
+        safetensors_path = os.path.join(ckpt_path, 'model.safetensors')
+        if os.path.exists(index_path):
+            with open(index_path, 'r') as f:
+                index = json.load(f)
+            for shard_file in set(index['weight_map'].values()):
+                ckpt_state_dict.update(load_file(os.path.join(ckpt_path, shard_file), device="cpu"))
+        elif os.path.exists(safetensors_path):
+            ckpt_state_dict = load_file(safetensors_path, device="cpu")
+        else:
+            ckpt_state_dict = torch.load(os.path.join(ckpt_path, 'pytorch_model.bin'), map_location="cpu")
+
+        # Create model with new architecture
+        student_model = AutoModelForCausalLM.from_config(student_config)
+        student_model = student_model.to(torch.bfloat16)
+        model_state = student_model.state_dict()
+
+        # Filter checkpoint weights - keep only matching shapes
+        filtered_ckpt = {}
+        for k, v in ckpt_state_dict.items():
+            if k in model_state and model_state[k].shape == v.shape:
+                filtered_ckpt[k] = v
+
+        # Load teacher weights for transitioning layers
+        logger.info(f"🔄 Loading teacher model for layer initialization...")
+        teacher_model = AutoModelForCausalLM.from_pretrained(
+            cfg.teacher_model.name, torch_dtype=torch.bfloat16, device_map="cpu"
+        )
+        teacher_state = teacher_model.state_dict()
+        for k, v in teacher_state.items():
+            if ".layers." in k and ".attn." in k:
+                # Extract layer index from key like "model.layers.5.attn.k_proj.weight"
+                parts = k.split(".layers.")
+                if len(parts) > 1:
+                    layer_idx = int(parts[1].split(".")[0])
+                    if layer_idx in layers_to_init_from_teacher:
+                        if k in model_state and model_state[k].shape == v.shape:
+                            filtered_ckpt[k] = v
+        del teacher_model
+        logger.info("✅ Teacher weights loaded for transitioning layers")
+
+        # Load weights into model
+        missing, unexpected = student_model.load_state_dict(filtered_ckpt, strict=False)
+        if missing:
+            logger.info(f"⚠️ {len(missing)} keys will be randomly initialized")
+
     for name, p in student_model.named_parameters():
         p.requires_grad = True
     # Enable gradient checkpointing if specified in config

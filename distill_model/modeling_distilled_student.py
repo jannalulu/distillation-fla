@@ -112,8 +112,9 @@ class StudentMLP(nn.Module):
         gate, y = self.gate_proj(x), self.up_proj(x)
 
         if self.fuse_swiglu:
-            # workaround gather parameters for swiglu.
-            with GatheredParameters([self.down_proj.weight, self.down_proj.bias], modifier_rank=None, enabled=True):
+            # Use GatheredParameters only during training with DeepSpeed ZeRO-3
+            # During inference, weights are already gathered, so this causes device placement issues
+            with GatheredParameters([self.down_proj.weight, self.down_proj.bias], modifier_rank=None, enabled=self.training):
                 return self.swiglu_linear(gate, y, self.down_proj.weight.data.clone(), self.down_proj.bias.data.clone() if self.down_proj.bias is not None else None)
         else:
             return self.down_proj(swiglu(gate, y))
