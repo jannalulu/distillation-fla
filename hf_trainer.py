@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 from transformers import Trainer
 import torch.nn.functional as F
-from fla.modules.fused_kl_div import FusedKLDivLoss
 
 __all__ = ["DistillTrainer", "FinetuneTrainer"]
 
