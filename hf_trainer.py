@@ -36,9 +36,10 @@ class DistillTrainer(_BaseTrainer):
         # 2) gather distillation losses that were stashed
         #    by every AttentionDistillationWrapper
         per_layer_losses = []
-        for layer in model.model.layers:           # Qwen3 blocks
-            sa = layer.attn
-            if hasattr(sa, "distill_loss"):
+        for layer in model.model.layers:
+            # Support both Qwen (attn) and Llama (self_attn) architectures
+            sa = getattr(layer, 'attn', None) or getattr(layer, 'self_attn', None)
+            if sa is not None and hasattr(sa, "distill_loss"):
                 per_layer_losses.append(sa.distill_loss)
 
         if per_layer_losses:                       # stack → mean

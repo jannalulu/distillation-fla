@@ -96,9 +96,21 @@ def _prepare_teacher_deepspeed(teacher_model, ds_config_path):
     return teacher_engine
 
 
+def get_attn_attr_name(layer):
+    """
+    Get the attention attribute name for a given layer.
+    Qwen uses 'attn', Llama uses 'self_attn'.
+    """
+    if hasattr(layer, 'attn'):
+        return 'attn'
+    elif hasattr(layer, 'self_attn'):
+        return 'self_attn'
+    else:
+        raise AttributeError(f"Layer {type(layer).__name__} has neither 'attn' nor 'self_attn' attribute")
+
 def patch_model_for_stage1(model, base_model_cfg, cfg):
     """
-    Replace `layer.attn` with a wrapper so the teacher’s
+    Replace `layer.attn` (or `layer.self_attn` for Llama) with a wrapper so the teacher's
     hidden states still drive the rest of the frozen network.
 
     This version is MODIFIED to keep specified layers as full-attention.
@@ -113,25 +125,29 @@ def patch_model_for_stage1(model, base_model_cfg, cfg):
     if keep_full_attention_layers:
         logger.info(f"⚠️ Will keep the following layers as full-attention: {keep_full_attention_layers}")
 
+    # Detect attention attribute name from the first layer
+    attn_attr = get_attn_attr_name(model.model.layers[0])
+    logger.info(f"✅ Detected attention attribute: '{attn_attr}'")
+
     for idx, layer in enumerate(model.model.layers):
         # Conditionally skip patching if the layer index is in our keep list.
         if idx in keep_full_attention_layers:
             logger.info(f"  -> Skipping layer {idx}, keeping as full-attention.")
             # Ensure the kept layer is frozen, as it's not being trained in Stage 1.
-            for param in layer.attn.parameters():
+            for param in getattr(layer, attn_attr).parameters():
                 param.requires_grad_(False)
             continue
 
         # The existing logic now only runs for layers NOT in the keep list.
         logger.info(f"  -> Patching layer {idx} with student attention wrapper.")
-        teacher_attn = layer.attn
+        teacher_attn = getattr(layer, attn_attr)
         wrapper = AttentionDistillationWrapper(
             teacher_attn,
             student_attn_class,
             base_model_cfg,
             idx
         )
-        layer.attn = wrapper
+        setattr(layer, attn_attr, wrapper)
 
 def build_student_for_stage1(cfg):
     """

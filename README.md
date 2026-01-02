@@ -26,13 +26,66 @@ pip install flash-linear-attention
 
 ## Preprocess corpus
 
+### For Qwen models
+
 ```bash
-python preprocess_tokenize.py # tokenize the whole corpus
-python preprocess_chunk.py --context_length 512  #for stage1 and 2
-python preprocess_chunk.py --context_length 4096 # for stage3
+python tokenize_dataset.py \
+    --tokenizer_name Qwen/Qwen2.5-3B-Instruct \
+    --output_path /workspace/checkpoints/data_cache/tokenized_tokens.arrow \
+    --target_tokens 10_000_000_000
+
+python preprocess_chunk.py \
+    --tokenized_dataset_path /workspace/checkpoints/data_cache/tokenized_tokens.arrow \
+    --context_length 512 \
+    --output_dir /workspace/checkpoints/data_cache/ \
+    --npy_cache_path /workspace/checkpoints/data_cache/tokenized_tokens_all.npy
+
+# For stage 3 (longer sequences)
+python preprocess_chunk.py \
+    --tokenized_dataset_path /workspace/checkpoints/data_cache/tokenized_tokens.arrow \
+    --context_length 4096 \
+    --output_dir /workspace/checkpoints/data_cache/ \
+    --npy_cache_path /workspace/checkpoints/data_cache/tokenized_tokens_all.npy
 ```
 
+Then set in your config:
+```yaml
+data:
+  cache_dir: '/workspace/checkpoints/data_cache/chunked_context512'  # for stage 1
+  # cache_dir: '/workspace/checkpoints/data_cache/chunked_context4096'  # for stage 2
+```
 
+### For Llama models
+
+```bash
+python tokenize_dataset.py \
+    --tokenizer_name meta-llama/Llama-3.2-3B-Instruct \
+    --output_path /workspace/checkpoints/data_cache/llama_tokenized_tokens.arrow \
+    --target_tokens 10_000_000_000
+
+python preprocess_chunk.py \
+    --tokenized_dataset_path /workspace/checkpoints/data_cache/llama_tokenized_tokens.arrow \
+    --context_length 512 \
+    --output_dir /workspace/checkpoints/data_cache/llama/ \
+    --npy_cache_path /workspace/checkpoints/data_cache/llama_tokenized_tokens_all.npy
+
+# For stage 3 (longer sequences)
+python preprocess_chunk.py \
+    --tokenized_dataset_path /workspace/checkpoints/data_cache/llama_tokenized_tokens.arrow \
+    --context_length 4096 \
+    --output_dir /workspace/checkpoints/data_cache/llama/ \
+    --npy_cache_path /workspace/checkpoints/data_cache/llama_tokenized_tokens_all.npy
+```
+
+Then set in your config:
+```yaml
+data:
+  cache_dir: '/workspace/checkpoints/data_cache/llama/chunked_context512'  # for stage 1 & 2
+  # cache_dir: '/workspace/checkpoints/data_cache/llama/chunked_context4096'  # for stage 3
+
+teacher_model:
+  name: 'meta-llama/Llama-3.2-3B-Instruct'
+```
 
 
 ## Teacher model
